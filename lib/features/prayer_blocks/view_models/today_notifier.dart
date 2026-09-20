@@ -52,10 +52,12 @@ class TodayNotifier extends AsyncNotifier<TodayState> {
     await _setupNotifications();
 
     final activeTemplates = await taskRepo.getActiveTemplates();
+    final orderPreferences = await settingsRepo.getTaskOrderPreferences();
     final dayId = await dayRepo.ensureDayExists(
       date: today,
       prayerTimes: prayerTimes,
       activeTemplates: activeTemplates,
+      orderPreferences: orderPreferences,
     );
 
     final view = await dayRepo.loadDayView(dayId);
@@ -114,6 +116,23 @@ class TodayNotifier extends AsyncNotifier<TodayState> {
           endDate: endDate,
           weekdays: weekdays,
         );
+    await refresh();
+  }
+
+  Future<void> reorderBlockTasks(
+    PrayerType prayerBlockType,
+    List<TaskItem> newOrder,
+  ) async {
+    await ref.read(taskRepositoryProvider).reorderBlockItems(newOrder);
+
+    final orderedKeys = [
+      for (final item in newOrder)
+        if (item.kind != TaskItemKind.user) item.orderKey,
+    ];
+    await ref
+        .read(settingsRepositoryProvider)
+        .updateTaskOrderPreference(prayerBlockType, orderedKeys);
+
     await refresh();
   }
 }

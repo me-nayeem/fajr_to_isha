@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../local/database.dart';
@@ -71,5 +73,39 @@ class SettingsRepository {
     await (db.update(db.appSettingsTable)
           ..where((t) => t.id.equals(settings.id)))
         .write(AppSettingsTableCompanion(manualPrayerTimes: Value(json)));
+  }
+
+  Future<Map<PrayerType, List<String>>> getTaskOrderPreferences() async {
+    final settings = await getSettings();
+    final raw = settings.taskOrderPreferences;
+    if (raw == null) return {};
+
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    final result = <PrayerType, List<String>>{};
+    for (final entry in decoded.entries) {
+      final prayerType = PrayerType.values.firstWhere(
+        (t) => t.name == entry.key,
+        orElse: () => PrayerType.fajr,
+      );
+      result[prayerType] = (entry.value as List).cast<String>();
+    }
+    return result;
+  }
+
+  Future<void> updateTaskOrderPreference(
+    PrayerType prayerType,
+    List<String> orderedKeys,
+  ) async {
+    final current = await getTaskOrderPreferences();
+    current[prayerType] = orderedKeys;
+
+    final encoded = jsonEncode(
+      current.map((key, value) => MapEntry(key.name, value)),
+    );
+
+    final settings = await getSettings();
+    await (db.update(db.appSettingsTable)
+          ..where((t) => t.id.equals(settings.id)))
+        .write(AppSettingsTableCompanion(taskOrderPreferences: Value(encoded)));
   }
 }

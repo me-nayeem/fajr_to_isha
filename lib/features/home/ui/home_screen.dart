@@ -203,71 +203,16 @@ class _BlockTaskList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rows = <Widget>[];
+    final visibleItems = block.orderedItems.where((item) {
+      final completed = switch (item.kind) {
+        TaskItemKind.prayer => item.prayerBlock!.prayerCompleted,
+        TaskItemKind.fixed => item.fixedTask!.completed,
+        TaskItemKind.user => item.userTask!.completed,
+      };
+      return !completed;
+    }).toList();
 
-    if (!block.block.prayerCompleted) {
-      rows.add(_TaskRow(
-        title: 'Pray ${prayerTypeLabel(block.block.prayerType)}',
-        leading: const Icon(Icons.mosque_outlined, color: AppColors.primary),
-        tagLabel: 'Prayer',
-        tagColor: AppColors.primary,
-        completed: false,
-        onToggle: (value) {
-          if (value) _celebrate(context);
-          ref
-              .read(todayNotifierProvider.notifier)
-              .togglePrayer(block.block.id, value);
-        },
-      ));
-    }
-
-    for (final fixedTask in block.fixedTasks) {
-      if (fixedTask.completed) continue;
-      rows.add(_TaskRow(
-        title: fixedTaskLabel(fixedTask.taskType),
-        leading: Icon(
-          _iconForFixedTask(fixedTask.taskType),
-          color: AppColors.primary,
-        ),
-        tagLabel: 'Fixed',
-        tagColor: AppColors.onSurfaceVariant,
-        completed: false,
-        onToggle: (value) {
-          if (value) _celebrate(context);
-          ref
-              .read(todayNotifierProvider.notifier)
-              .toggleFixedTask(fixedTask.id, value);
-        },
-      ));
-    }
-
-    for (final userTask in block.userTasks) {
-      if (userTask.completed) continue;
-      rows.add(_TaskRow(
-        title: userTask.title,
-        leading: CircleAvatar(
-          backgroundColor: AppColors.primaryContainer,
-          child: Text(
-            userTask.title.isNotEmpty ? userTask.title[0].toUpperCase() : '?',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        tagLabel: 'Personal',
-        tagColor: AppColors.primary,
-        completed: false,
-        onToggle: (value) {
-          if (value) _celebrate(context);
-          ref
-              .read(todayNotifierProvider.notifier)
-              .toggleUserTask(userTask.id, value);
-        },
-      ));
-    }
-
-    if (rows.isEmpty) {
+    if (visibleItems.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
@@ -279,7 +224,101 @@ class _BlockTaskList extends ConsumerWidget {
       );
     }
 
-    return Column(children: rows);
+    return ReorderableListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      onReorder: (oldIndex, newIndex) {
+        final reordered = List<TaskItem>.from(visibleItems);
+        final adjustedNewIndex =
+            newIndex > oldIndex ? newIndex - 1 : newIndex;
+        final moved = reordered.removeAt(oldIndex);
+        reordered.insert(adjustedNewIndex, moved);
+        ref
+            .read(todayNotifierProvider.notifier)
+            .reorderBlockTasks(block.block.prayerType, reordered);
+      },
+      children: [
+        for (var i = 0; i < visibleItems.length; i++)
+          _rowFor(context, ref, visibleItems[i], i),
+      ],
+    );
+  }
+
+  Widget _rowFor(
+    BuildContext context,
+    WidgetRef ref,
+    TaskItem item,
+    int index,
+  ) {
+    switch (item.kind) {
+      case TaskItemKind.prayer:
+        final prayerBlock = item.prayerBlock!;
+        return _TaskRow(
+          key: ValueKey(item.widgetKey),
+          index: index,
+          title: 'Pray ${prayerTypeLabel(prayerBlock.prayerType)}',
+          leading:
+              const Icon(Icons.mosque_outlined, color: AppColors.primary),
+          tagLabel: 'Prayer',
+          tagColor: AppColors.primary,
+          completed: false,
+          onToggle: (value) {
+            if (value) _celebrate(context);
+            ref
+                .read(todayNotifierProvider.notifier)
+                .togglePrayer(prayerBlock.id, value);
+          },
+        );
+      case TaskItemKind.fixed:
+        final fixedTask = item.fixedTask!;
+        return _TaskRow(
+          key: ValueKey(item.widgetKey),
+          index: index,
+          title: fixedTaskLabel(fixedTask.taskType),
+          leading: Icon(
+            _iconForFixedTask(fixedTask.taskType),
+            color: AppColors.primary,
+          ),
+          tagLabel: 'Fixed',
+          tagColor: AppColors.onSurfaceVariant,
+          completed: false,
+          onToggle: (value) {
+            if (value) _celebrate(context);
+            ref
+                .read(todayNotifierProvider.notifier)
+                .toggleFixedTask(fixedTask.id, value);
+          },
+        );
+      case TaskItemKind.user:
+        final userTask = item.userTask!;
+        return _TaskRow(
+          key: ValueKey(item.widgetKey),
+          index: index,
+          title: userTask.title,
+          leading: CircleAvatar(
+            backgroundColor: AppColors.primaryContainer,
+            child: Text(
+              userTask.title.isNotEmpty
+                  ? userTask.title[0].toUpperCase()
+                  : '?',
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          tagLabel: 'Personal',
+          tagColor: AppColors.primary,
+          completed: false,
+          onToggle: (value) {
+            if (value) _celebrate(context);
+            ref
+                .read(todayNotifierProvider.notifier)
+                .toggleUserTask(userTask.id, value);
+          },
+        );
+    }
   }
 
   void _celebrate(BuildContext context) {
@@ -307,6 +346,7 @@ class _BlockTaskList extends ConsumerWidget {
 }
 
 class _TaskRow extends StatelessWidget {
+  final int index;
   final String title;
   final Widget leading;
   final String tagLabel;
@@ -315,6 +355,8 @@ class _TaskRow extends StatelessWidget {
   final void Function(bool) onToggle;
 
   const _TaskRow({
+    super.key,
+    required this.index,
     required this.title,
     required this.leading,
     required this.tagLabel,
@@ -351,9 +393,21 @@ class _TaskRow extends StatelessWidget {
             ),
           ),
         ),
-        trailing: Checkbox(
-          value: completed,
-          onChanged: (value) => onToggle(value ?? false),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: completed,
+              onChanged: (value) => onToggle(value ?? false),
+            ),
+            ReorderableDragStartListener(
+              index: index,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.drag_handle, color: AppColors.onSurfaceVariant),
+              ),
+            ),
+          ],
         ),
         onTap: () => onToggle(!completed),
       ),

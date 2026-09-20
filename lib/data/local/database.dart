@@ -34,7 +34,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -42,6 +42,15 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            await m.addColumn(prayerBlocks, prayerBlocks.sortOrder);
+            await m.addColumn(fixedTasks, fixedTasks.sortOrder);
+            await m.addColumn(userTaskInstances, userTaskInstances.sortOrder);
+            await m.addColumn(
+              appSettingsTable,
+              appSettingsTable.taskOrderPreferences,
+            );
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

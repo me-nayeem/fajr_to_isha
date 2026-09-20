@@ -11,8 +11,6 @@ enum FixedTaskType {
 
 enum RecurrenceType { once, daily, dateRange, customWeekdays }
 
-// Tables 
-
 @DataClassName('Day')
 class Days extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -30,6 +28,7 @@ class PrayerBlocks extends Table {
   BoolColumn get prayerCompleted =>
       boolean().withDefault(const Constant(false))();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('FixedTask')
@@ -39,6 +38,7 @@ class FixedTasks extends Table {
   TextColumn get taskType => textEnum<FixedTaskType>()();
   BoolColumn get completed => boolean().withDefault(const Constant(false))();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('TaskTemplate')
@@ -47,12 +47,10 @@ class TaskTemplates extends Table {
   TextColumn get title => text()();
   TextColumn get prayerBlockType => textEnum<PrayerType>()();
   TextColumn get recurrenceType => textEnum<RecurrenceType>()();
-
   DateTimeColumn get specificDate => dateTime().nullable()();
   DateTimeColumn get startDate => dateTime().nullable()();
   DateTimeColumn get endDate => dateTime().nullable()();
   TextColumn get weekdays => text().nullable()();
-
   BoolColumn get active => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -68,6 +66,7 @@ class UserTaskInstances extends Table {
   BoolColumn get completed => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('DailyReport')
@@ -90,8 +89,9 @@ class AppSettingsTable extends Table {
   TextColumn get madhab => text().withDefault(const Constant('shafi'))();
   RealColumn get locationLat => real().nullable()();
   RealColumn get locationLng => real().nullable()();
-  TextColumn get manualPrayerTimes => text().nullable()(); 
+  TextColumn get manualPrayerTimes => text().nullable()();
   TextColumn get notificationTime =>
       text().withDefault(const Constant('23:00'))();
   DateTimeColumn get lastLocationCheckAt => dateTime().nullable()();
+  TextColumn get taskOrderPreferences => text().nullable()();
 }

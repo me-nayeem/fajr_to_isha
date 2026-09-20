@@ -12,21 +12,11 @@ class DayRepository {
 
   DayRepository(this.db);
 
-  /// Returns the id of the Day for [date] — creating it (with all its
-  /// prayer blocks, fixed tasks, and applicable recurring user tasks) if
-  /// it doesn't exist yet. Safe to call repeatedly for the same date;
-  /// it will never duplicate data.
-  ///
-  /// Note: this function does NOT resolve prayer times or fetch templates
-  /// itself — the caller provides [prayerTimes] (already resolved via
-  /// PrayerTimeService or manual settings) and [activeTemplates] (already
-  /// queried from the database). Keeping this function focused purely on
-  /// "given these inputs, generate the day's rows" makes it simple to
-  /// test without needing to mock location/prayer-time services.
   Future<int> ensureDayExists({
     required DateTime date,
     required DailyPrayerTimes prayerTimes,
     required List<TaskTemplate> activeTemplates,
+    Map<PrayerType, List<String>> orderPreferences = const {},
   }) async {
     final dateOnly = DateTime(date.year, date.month, date.day);
 
@@ -35,9 +25,6 @@ class DayRepository {
         .getSingleOrNull();
     if (existing != null) return existing.id;
 
-    // Wrapped in a transaction: if anything fails partway through (a
-    // crash, a bug), we end up with either a fully-formed day or no day
-    // at all — never a half-created one with missing blocks.
     return db.transaction(() async {
       final dayId = await db.into(db.days).insert(
             DaysCompanion.insert(date: dateOnly),
@@ -54,20 +41,33 @@ class DayRepository {
       for (final entry in scheduledTimeFor.entries) {
         final prayerType = entry.key;
         final scheduledTime = entry.value;
+        final fixedTypes = fixedTasksForPrayer(prayerType);
+
+        final preference = orderPreferences[prayerType];
+        int orderOf(String key) {
+          if (preference == null) {
+            if (key == 'prayer') return 0;
+            return 1 + fixedTypes.indexWhere((t) => t.name == key);
+          }
+          final index = preference.indexOf(key);
+          return index == -1 ? preference.length : index;
+        }
 
         final blockId = await db.into(db.prayerBlocks).insert(
               PrayerBlocksCompanion.insert(
                 dayId: dayId,
                 prayerType: prayerType,
                 scheduledTime: scheduledTime,
+                sortOrder: Value(orderOf('prayer')),
               ),
             );
 
-        for (final fixedType in fixedTasksForPrayer(prayerType)) {
+        for (final fixedType in fixedTypes) {
           await db.into(db.fixedTasks).insert(
                 FixedTasksCompanion.insert(
                   prayerBlockId: blockId,
                   taskType: fixedType,
+                  sortOrder: Value(orderOf(fixedType.name)),
                 ),
               );
         }
@@ -90,9 +90,8 @@ class DayRepository {
                   templateId: Value(template.id),
                   dayId: dayId,
                   prayerBlockId: blockId,
-                  // Copied now, not referenced live — protects history
-                  // if the template is renamed/deleted later.
                   title: template.title,
+                  sortOrder: Value(fixedTypes.length + 1),
                 ),
               );
         }
@@ -102,8 +101,6 @@ class DayRepository {
     });
   }
 
-  /// Loads the full day — all 5 blocks, each with its fixed tasks and
-  /// user task instances — into one UI-ready shape.
   Future<DailyViewData> loadDayView(int dayId) async {
     final day =
         await (db.select(db.days)..where((t) => t.id.equals(dayId)))
